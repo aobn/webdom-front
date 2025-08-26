@@ -148,7 +148,12 @@
         
         <!-- 域名管理页面 -->
         <div v-else-if="currentPageName === 'domain-manage'">
-          <DomainManage />
+          <DomainManage @manage-dns="handleManageDns" />
+        </div>
+        
+        <!-- DNS记录管理页面 -->
+        <div v-else-if="currentPageName === 'dns-manage'">
+          <DnsManage />
         </div>
         
         <!-- API测试页面 -->
@@ -254,6 +259,7 @@ import { ref, computed, onMounted, onBeforeMount } from 'vue'
 import { useRouter } from 'vue-router'
 import DomainRegister from './domain-register.vue'
 import DomainManage from './domain-manage.vue'
+import DnsManage from './dns-manage.vue'
 import ApiTest from './api-test.vue'
 import DomainTest from './domain-test.vue'
 import ThemeToggle from '@/components/ThemeToggle.vue'
@@ -319,7 +325,12 @@ const currentPageName = computed(() => {
  * 检查是否为当前页面
  */
 const isCurrentPage = (page: string) => {
-  return currentPageName.value === page
+  const current = currentPageName.value
+  // 如果当前是DNS管理页面，域名管理项也应该高亮
+  if (current === 'dns-manage' && page === 'domain-manage') {
+    return true
+  }
+  return current === page
 }
 
 /**
@@ -333,6 +344,21 @@ const handleNavClick = (title: string) => {
   } else if (title === 'Settings') {
     router.push({ path: '/', query: { page: 'settings' } })
   }
+}
+
+/**
+ * 处理DNS管理事件
+ */
+const handleManageDns = (domain: string) => {
+  console.log('切换到DNS管理页面，域名:', domain)
+  // 切换到DNS管理页面，并传递域名参数
+  router.push({ 
+    path: '/', 
+    query: { 
+      page: 'dns-manage',
+      domain: domain
+    }
+  })
 }
 
 /**

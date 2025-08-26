@@ -79,6 +79,31 @@ export interface GetDomainListParams {
 }
 
 /**
+ * 三级域名解析记录接口
+ */
+export interface SubdomainRecord {
+  id: number
+  userId: number
+  subdomain: string
+  domain: string
+  recordId: number
+  ipAddress: string
+  ttl: number
+  status: string
+  remark: string
+  createTime: string
+  updateTime: string
+}
+
+/**
+ * 获取三级域名解析列表请求参数接口
+ */
+export interface GetSubdomainListParams {
+  subdomain: string
+  domain?: string
+}
+
+/**
  * 域名服务类
  */
 export class DomainService {
@@ -117,6 +142,18 @@ export class DomainService {
    */
   private getDefaultSuffixes(): string[] {
     return ['cblog.eu', 'test23.cblog.eu', 'twodoller.store', 'vvvv.host']
+  }
+
+  /**
+   * 获取三级域名解析列表
+   * @param params 查询参数
+   * @returns Promise<ApiResponse<SubdomainRecord[]>>
+   */
+  async getSubdomainList(params: GetSubdomainListParams): Promise<ApiResponse<SubdomainRecord[]>> {
+    return http.post<ApiResponse<SubdomainRecord[]>>('/api/user/domains/subdomains/list', {
+      subdomain: params.subdomain,
+      domain: params.domain || 'cblog.eu'
+    })
   }
 }
 

@@ -5,7 +5,8 @@
  * @created 2024-01-20
  */
 
-import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse } from 'axios'
+import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse, AxiosHeaders } from 'axios'
+import { globalDialog } from '@/composables/useGlobalDialog'
 
 // API响应数据结构
 export interface ApiResponse<T = any> {
@@ -61,8 +62,10 @@ class HttpClient {
         // 添加JWT认证token
         const token = localStorage.getItem('token')
         if (token) {
-          config.headers = config.headers || {}
-          config.headers.Authorization = `Bearer ${token}`
+          if (!config.headers) {
+            config.headers = new AxiosHeaders()
+          }
+          config.headers['Authorization'] = `Bearer ${token}`
         }
 
         // 确保Content-Type正确设置
@@ -72,7 +75,7 @@ class HttpClient {
 
         return config
       },
-      (error) => {
+      async (error) => {
         // 对请求错误做些什么
         console.error('请求错误:', error)
         return Promise.reject(error)
@@ -85,8 +88,9 @@ class HttpClient {
    */
   private setupResponseInterceptor(): void {
     this.instance.interceptors.response.use(
-      (response: AxiosResponse<ApiResponse>) => {
+      async (response: AxiosResponse<ApiResponse>) => {
         // 2xx 范围内的状态码都会触发该函数
+        console.log('🟢 我是拦截器 - 成功响应:', JSON.stringify(response.data))
         console.log('响应数据:', JSON.stringify(response.data))
 
         // 检查响应数据结构
@@ -99,6 +103,62 @@ class HttpClient {
           const { code, message, data } = response.data
 
           console.log('解析响应:', { code, message, hasData: !!data })
+
+          // 检查是否为JWT失效错误（即使HTTP状态码是200）
+          if (code === 500 && message && (
+            message.includes('JWT signature does not match locally computed signature') ||
+            message.includes('JWT validity cannot be asserted') ||
+            message.includes('JWT signature') ||
+            message.includes('JWT expired') ||
+            message.includes('Invalid JWT')
+          )) {
+            console.warn('🔴 在成功响应中检测到JWT失效错误，开始处理认证失效流程')
+            console.log('JWT错误详情:', { code, message })
+            
+            // 显示JWT失效对话框
+            globalDialog.showWarning('JWT已失效', '请重新登录', {
+              confirmButtonText: '确定',
+              persistent: true, // 添加persistent属性，防止用户点击外部关闭对话框
+              onConfirm: async () => {
+                // 清除本地认证信息
+                localStorage.removeItem('token')
+                localStorage.removeItem('user')
+                localStorage.removeItem('rememberedEmail')
+                console.log('✅ 已清除本地认证信息')
+                
+                // 使用Vue Router进行导航
+                console.log('🚀 准备跳转到登录页面...')
+                try {
+                  const { default: router } = await import('@/router')
+                  const currentRoute = router.currentRoute.value
+                  console.log('当前路由信息:', { path: currentRoute.path, fullPath: currentRoute.fullPath })
+                  
+                  if (currentRoute.path !== '/login') {
+                    console.log('🚀 JWT失效，跳转到登录页面，当前路径:', currentRoute.fullPath)
+                    await router.push({
+                      path: '/login',
+                      query: { redirect: currentRoute.fullPath }
+                    })
+                    console.log('✅ 跳转命令执行完成')
+                  } else {
+                    console.log('⚠️ 当前已在登录页面，跳过跳转')
+                  }
+                } catch (routerError) {
+                  console.error('❌ 动态导入router或跳转失败:', routerError)
+                  // 降级方案：使用window.location
+                  console.log('🔄 使用降级方案进行页面跳转')
+                  window.location.href = '/login'
+                }
+              }
+            })
+            
+            // 抛出JWT失效错误
+            const jwtError = new Error('JWT验证失败，请重新登录')
+            jwtError.name = 'JWTError'
+            ;(jwtError as any).code = code
+            ;(jwtError as any).data = data
+            return Promise.reject(jwtError)
+          }
 
           // 根据API文档的业务状态码处理响应
           if (code === 200 || code === 201) {
@@ -119,7 +179,7 @@ class HttpClient {
           return Promise.reject(new Error('解析响应数据失败'))
         }
       },
-      (error) => {
+      async (error) => {
         // 超出 2xx 范围的状态码都会触发该函数
         console.error('响应错误:', error)
 
@@ -141,12 +201,22 @@ class HttpClient {
               localStorage.removeItem('user')
               localStorage.removeItem('rememberedEmail')
               
-              // 自动跳转到登录页面，保存当前路径用于登录后重定向
-              if (typeof window !== 'undefined') {
-                const currentPath = window.location.pathname + window.location.search
-                if (currentPath !== '/login') {
-                  window.location.href = `/login?redirect=${encodeURIComponent(currentPath)}`
+              // 使用Vue Router进行导航
+              try {
+                const { default: router } = await import('@/router')
+                const currentRoute = router.currentRoute.value
+                if (currentRoute.path !== '/login') {
+                  console.log('🚀 JWT失效，跳转到登录页面，当前路径:', currentRoute.fullPath)
+                  await router.push({
+                    path: '/login',
+                    query: { redirect: currentRoute.fullPath }
+                  })
+                  console.log('✅ 跳转命令执行完成')
                 }
+              } catch (routerError) {
+                console.error('❌ 动态导入router失败:', routerError)
+                // 降级方案：使用window.location
+                window.location.href = '/login'
               }
               break
             case 403:
@@ -171,6 +241,78 @@ class HttpClient {
           // 请求已发出但没有收到响应
           errorMessage = '网络连接超时，请检查网络设置'
         }
+
+        // 检查是否为JWT相关错误
+        const responseMessage = error.response?.data?.message || ''
+        const responseStatus = error.response?.status
+        
+        console.log('=== JWT失效检查日志 ===')
+        console.log('响应状态码:', responseStatus)
+        console.log('响应消息:', responseMessage)
+        console.log('完整响应数据:', error.response?.data)
+        
+        const isJwtError = responseMessage.includes('JWT signature does not match locally computed signature') ||
+                          responseMessage.includes('JWT validity cannot be asserted') ||
+                          responseMessage.includes('JWT signature') ||
+                          responseMessage.includes('JWT expired') ||
+                          responseMessage.includes('Invalid JWT') ||
+                          responseMessage.includes('jwt') ||
+                          responseMessage.includes('JWT') ||
+                          responseMessage.includes('token')
+        
+        const is401Error = responseStatus === 401
+        const is500JwtError = responseStatus === 500 && isJwtError
+        
+        console.log('JWT错误匹配结果:', isJwtError)
+        console.log('是否401错误:', is401Error)
+        console.log('是否500状态码JWT错误:', is500JwtError)
+        console.log('本地token存在:', !!localStorage.getItem('token'))
+        
+        if (isJwtError || is401Error || is500JwtError) {
+          console.warn('🔴 检测到JWT失效或401错误，开始处理认证失效流程')
+          console.log('错误详情:', { responseStatus, responseMessage, isJwtError, is401Error, is500JwtError })
+          
+          // 显示JWT失效对话框
+          globalDialog.showWarning('JWT已失效', '请重新登录', {
+            confirmButtonText: '确定',
+            onConfirm: async () => {
+              // 清除本地认证信息
+              localStorage.removeItem('token')
+              localStorage.removeItem('user')
+              localStorage.removeItem('rememberedEmail')
+              console.log('✅ 已清除本地认证信息')
+              
+              // 使用Vue Router进行导航
+              console.log('🚀 准备跳转到登录页面...')
+              try {
+                const { default: router } = await import('@/router')
+                const currentRoute = router.currentRoute.value
+                console.log('当前路由信息:', { path: currentRoute.path, fullPath: currentRoute.fullPath })
+                
+                if (currentRoute.path !== '/login') {
+                  console.log('🚀 JWT失效，跳转到登录页面，当前路径:', currentRoute.fullPath)
+                  await router.push({
+                    path: '/login',
+                    query: { redirect: currentRoute.fullPath }
+                  })
+                  console.log('✅ 跳转命令执行完成')
+                } else {
+                  console.log('⚠️ 当前已在登录页面，跳过跳转')
+                }
+              } catch (routerError) {
+                console.error('❌ 动态导入router或跳转失败:', routerError)
+                // 降级方案：使用window.location
+                console.log('🔄 使用降级方案进行页面跳转')
+                window.location.href = '/login'
+              }
+            }
+          })
+          
+          errorMessage = 'JWT验证失败，请重新登录'
+        } else {
+          console.log('✅ 未检测到JWT失效，继续正常错误处理')
+        }
+        console.log('=== JWT失效检查结束 ===')
 
         // 创建统一的错误对象
         const customError = new Error(errorMessage)

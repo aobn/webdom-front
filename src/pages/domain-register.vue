@@ -39,7 +39,7 @@
                 clearable
                 @keyup.enter="handleSearch"
                 @input="filterInput"
-                :rules="[v => /^[a-zA-Z0-9]*$/.test(v) || '只能输入字母和数字']"
+                :rules="[v => /^[a-z0-9]*$/.test(v) || '只能输入小写字母和数字']"
               >
                 <template #prepend-inner>
                   <v-icon color="primary">mdi-magnify</v-icon>
@@ -142,35 +142,59 @@
       </v-col>
     </v-row>
 
-
+    <!-- 使用全局对话框组件 -->
     <!-- 注册成功对话框 -->
-        <v-dialog v-model="successDialog" max-width="500">
-          <v-card>
-            <v-card-title class="text-center pa-6">
-              <v-icon size="64" color="success" class="mb-4">mdi-check-circle</v-icon>
-              <div class="text-h5">注册成功！</div>
-            </v-card-title>
-            <v-card-text class="text-center pb-6">
-              <p class="text-body-1 mb-4">
-                恭喜您成功注册域名：
-                <strong>{{ selectedDomain?.domain }}</strong>
-              </p>
-              <p class="text-body-2 text-medium-emphasis">
-                域名将在24小时内生效，相关信息已发送至您的邮箱。
-              </p>
-            </v-card-text>
-            <v-card-actions class="justify-center pb-6">
-              <v-btn color="primary" @click="successDialog = false">
-                确定
-              </v-btn>
-            </v-card-actions>
-          </v-card>
-        </v-dialog>
+    <GlobalDialog
+      v-model="successDialog"
+      type="success"
+      title="注册成功！"
+      icon="mdi-check-circle"
+      :max-width="500"
+      :show-cancel-button="false"
+      confirm-button-text="确定"
+      @confirm="successDialog = false"
+    >
+      <template #content>
+        <div class="text-center">
+          <p class="text-body-1 mb-4">
+            恭喜您成功注册域名：
+            <strong>{{ selectedDomain?.domain }}</strong>
+          </p>
+          <p class="text-body-2 text-medium-emphasis">
+            相关信息已发送至您的邮箱。
+          </p>
+        </div>
+      </template>
+    </GlobalDialog>
+    
+    <!-- 注册失败对话框 -->
+    <GlobalDialog
+      v-model="errorDialog"
+      type="error"
+      title="注册失败"
+      icon="mdi-alert-circle"
+      :max-width="500"
+      :show-cancel-button="false"
+      confirm-button-text="确定"
+      @confirm="errorDialog = false"
+    >
+      <template #content>
+        <div class="text-center">
+          <p class="text-body-1 mb-4">
+            域名注册失败：
+          </p>
+          <p class="text-body-2 text-medium-emphasis">
+            {{ errorMessage }}
+          </p>
+        </div>
+      </template>
+    </GlobalDialog>
    </v-container>
  </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import GlobalDialog from '@/components/GlobalDialog.vue'
 
 // 表单引用
 const formRef = ref()
@@ -205,6 +229,8 @@ const formValid = ref(false)
 
 // 注册相关
 const selectedDomain = ref<{domain: string} | null>(null)
+const errorDialog = ref(false)
+const errorMessage = ref('')
 
 // 域名后缀选项
 const domainSuffixes = ref<Array<{title: string, value: string, price: number}>>([])
@@ -282,12 +308,16 @@ const handleSearch = async () => {
     // 并发查询所有域名后缀的可用性
     const promises = suffixes.map(async (suffix) => {
       try {
-        const response = await fetch(`/api/dnspod/available-subdomain?subDomain=${encodeURIComponent(searchQuery.value)}&domain=${encodeURIComponent(suffix)}`, {
-          method: 'GET',
+        const response = await fetch(`/api/user/subdomain/check-registration`, {
+          method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
-          }
+          },
+          body: JSON.stringify({
+            subdomain: searchQuery.value,
+            domain: suffix
+          })
         })
         
         const result = await response.json()
@@ -295,7 +325,7 @@ const handleSearch = async () => {
         return {
           domain: `${searchQuery.value}.${suffix}`,
           suffix,
-          available: result.code === 200 // 200表示可用，409表示已注册
+          available: !result.data.includes('已注册') // 根据返回消息判断是否已注册
         }
       } catch (error) {
         console.error(`查询域名 ${searchQuery.value}.${suffix} 失败:`, error)
@@ -344,17 +374,15 @@ const registerDomain = async (result: {domain: string}) => {
     const domain = domainParts.slice(1).join('.')
     
     // 调用注册接口
-    const response = await fetch('/api/user/domains/register', {
+    const response = await fetch('/api/user/subdomain/register', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        subDomain: subDomain,
-        domain: domain,
-        value: '8.8.8.8', // 默认IP地址
-        ttl: 600 // 默认TTL值
+        subdomain: subDomain,
+        domain: domain
       })
     })
     
@@ -368,12 +396,14 @@ const registerDomain = async (result: {domain: string}) => {
       await handleSearch()
     } else {
       console.error('域名注册失败:', apiResult.message)
-      // 这里可以显示错误提示
+      errorMessage.value = apiResult.message || '域名注册失败，请稍后重试'
+      errorDialog.value = true
     }
     
-  } catch (error) {
+  } catch (error: any) {
     console.error('域名注册失败:', error)
-    // 这里可以显示错误提示
+    errorMessage.value = error.message || '网络错误，请稍后重试'
+    errorDialog.value = true
   } finally {
     registering.value = false
   }
@@ -389,10 +419,10 @@ const onDomainInput = () => {
   }
 }
 
-// 过滤输入，只允许字母和数字
+// 过滤输入，只允许小写字母和数字
 const filterInput = () => {
-  // 使用正则表达式过滤非字母数字字符
-  searchQuery.value = searchQuery.value.replace(/[^a-zA-Z0-9]/g, '')
+  // 使用正则表达式过滤非小写字母数字字符，并将大写字母转换为小写
+  searchQuery.value = searchQuery.value.toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
 // 检查域名可用性

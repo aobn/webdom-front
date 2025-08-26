@@ -182,6 +182,11 @@ import { authService } from '@/services/authService'
 import { useGlobalDialog } from '@/composables/useGlobalDialog'
 import LoginDialog from '@/components/LoginDialog.vue'
 
+// 定义事件
+const emit = defineEmits<{
+  manageDns: [domain: string]
+}>()
+
 // 路由
 const router = useRouter()
 
@@ -230,7 +235,7 @@ const loadDomainList = async () => {
     console.log('开始加载用户三级域名列表...')
     
     // 调用API获取用户三级域名列表
-    const response = await http.get('/api/user/domains/subdomains')
+    const response = await http.get('/api/user/subdomain/list/mine')
     
     // 检查响应格式
     if (response && response.code === 200 && Array.isArray(response.data)) {
@@ -318,9 +323,10 @@ const deleteDomain = async (domain: DomainRecord) => {
  * 管理域名
  */
 const manageDomain = (domain: DomainRecord) => {
-  // TODO: 实现域名管理功能
-  console.log('管理域名:', domain)
-  showSuccessMessage('域名管理功能开发中...')
+  const fullDomain = `${domain.subdomain}.${domain.domain}`
+  console.log('管理域名:', fullDomain)
+  // 触发DNS管理事件，让父组件处理页面切换
+  emit('manageDns', fullDomain)
 }
 
 /**
