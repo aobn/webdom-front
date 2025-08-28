@@ -235,7 +235,7 @@ const loadDomainList = async () => {
     console.log('开始加载用户三级域名列表...')
     
     // 调用API获取用户三级域名列表
-    const response = await http.get('/api/user/subdomain/list/mine')
+    const response = await http.get('/api/user/subdomains/list/mine')
     
     // 检查响应格式
     if (response && response.code === 200 && Array.isArray(response.data)) {
