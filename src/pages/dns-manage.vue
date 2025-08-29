@@ -37,14 +37,35 @@
     <v-card class="dns-records-card rounded-lg" elevation="1">
       <v-card-title class="pa-4 d-flex align-center justify-space-between">
         <span class="text-h6 font-weight-bold">DNS记录</span>
-        <v-btn
-          color="primary"
-          variant="elevated"
-          prepend-icon="mdi-plus"
-          @click="showAddDialog = true"
-        >
-          添加记录
-        </v-btn>
+        <div class="d-flex gap-3 align-center">
+          <!-- 过滤器 -->
+          <v-select
+            v-model="filterType"
+            :items="filterTypeOptions"
+            label="记录类型"
+            variant="outlined"
+            density="compact"
+            style="min-width: 120px"
+            @update:model-value="applyFilters"
+          ></v-select>
+          <v-select
+            v-model="filterStatus"
+            :items="filterStatusOptions"
+            label="状态"
+            variant="outlined"
+            density="compact"
+            style="min-width: 100px"
+            @update:model-value="applyFilters"
+          ></v-select>
+          <v-btn
+            color="primary"
+            variant="elevated"
+            prepend-icon="mdi-plus"
+            @click="showAddDialog = true"
+          >
+            添加记录
+          </v-btn>
+        </div>
       </v-card-title>
 
       <!-- 加载状态 -->
@@ -58,11 +79,13 @@
       </div>
 
       <!-- 空状态 -->
-      <div v-else-if="!loading && dnsRecords.length === 0" class="text-center pa-8">
+      <div v-else-if="!loading && filteredDnsRecords.length === 0" class="text-center pa-8">
         <v-icon size="80" color="grey-lighten-2" class="mb-4">mdi-dns</v-icon>
-        <div class="text-h6 mb-2 text-medium-emphasis">暂无DNS记录</div>
+        <div class="text-h6 mb-2 text-medium-emphasis">
+          {{ dnsRecords.length === 0 ? '暂无DNS记录' : '没有符合条件的记录' }}
+        </div>
         <div class="text-body-2 text-medium-emphasis mb-4">
-          点击"添加记录"按钮创建
+          {{ dnsRecords.length === 0 ? '点击"添加记录"按钮创建' : '请调整过滤条件' }}
         </div>
       </div>
 
@@ -75,7 +98,7 @@
             <div class="dns-column" style="flex: 2">名称</div>
             <div class="dns-column" style="flex: 2.5">内容</div>
             <div class="dns-column" style="flex: 1">TTL</div>
-            <div class="dns-column" style="flex: 1.2">代理状态</div>
+            <div class="dns-column" style="flex: 1.2">状态</div>
             <div class="dns-column text-center" style="flex: 1.5">操作</div>
           </div>
 
@@ -83,7 +106,7 @@
 
           <!-- DNS记录项 -->
           <div
-            v-for="(record, index) in dnsRecords"
+            v-for="(record, index) in filteredDnsRecords"
             :key="record.id"
             class="dns-item d-flex align-center px-4 py-3"
             :class="{ 'dns-item-hover': true }"
@@ -110,12 +133,21 @@
             </div>
             <div class="dns-column" style="flex: 1.2">
               <v-chip
-                :color="record.proxied ? 'orange' : 'grey'"
+                :color="getStatusColor(record.status)"
                 variant="tonal"
                 size="small"
               >
-                {{ record.proxied ? '已代理' : '仅DNS' }}
+                {{ getStatusText(record.status) }}
               </v-chip>
+              <div v-if="record.syncStatus" class="mt-1">
+                <v-chip
+                  :color="getSyncStatusColor(record.syncStatus)"
+                  variant="outlined"
+                  size="x-small"
+                >
+                  {{ getSyncStatusText(record.syncStatus) }}
+                </v-chip>
+              </div>
             </div>
             <div class="dns-column text-center" style="flex: 1.5">
               <div class="d-flex justify-center gap-2">
@@ -267,9 +299,8 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { http } from '@/utils/http'
 import { useGlobalDialog } from '@/composables/useGlobalDialog'
-import { domainService } from '@/services/domainService'
+import { dnsService, type DnsRecord as ApiDnsRecord } from '@/services/dnsService'
 
 // 路由
 const router = useRouter()
@@ -282,6 +313,7 @@ const { showConfirm } = useGlobalDialog()
 const loading = ref(false)
 const saving = ref(false)
 const dnsRecords = ref<DnsRecord[]>([])
+const filteredDnsRecords = ref<DnsRecord[]>([])
 const deletingIds = ref<number[]>([])
 const showError = ref(false)
 const errorMessage = ref('')
@@ -290,6 +322,10 @@ const successMessage = ref('')
 const showAddDialog = ref(false)
 const formValid = ref(false)
 const editingRecord = ref<DnsRecord | null>(null)
+
+// 过滤器
+const filterType = ref('')
+const filterStatus = ref('')
 
 // 表单数据
 const recordForm = ref({
@@ -303,20 +339,30 @@ const recordForm = ref({
 // 域名信息
 const domainName = computed(() => {
   // 从路由参数或查询参数中获取域名
-  return (route.params.domain as string) || (route.query.domain as string) || 'baixi.zabc.net'
+  return (route.params as any).domain || (route.query as any).domain || 'baixi.zabc.net'
+})
+
+// 子域名ID
+const subdomainId = computed(() => {
+  return (route.params as any).subdomainId || (route.query as any).subdomainId
 })
 
 // DNS记录接口
 interface DnsRecord {
   id: number
   userId: number
-  subdomain: string
-  domain: string
+  subdomainId: number
   recordId: number
-  ipAddress: string
+  type: string
+  name: string
+  content: string
   ttl: number
+  proxied?: boolean
   status: string
-  remark: string
+  remark?: string
+  monitorStatus?: string
+  syncStatus?: string
+  syncError?: string
   createTime: string
   updateTime: string
 }
@@ -346,6 +392,24 @@ const ttlOptions = [
   { title: '1天', value: 86400 }
 ]
 
+// 过滤器选项
+const filterTypeOptions = [
+  { title: '全部类型', value: '' },
+  { title: 'A', value: 'A' },
+  { title: 'AAAA', value: 'AAAA' },
+  { title: 'CNAME', value: 'CNAME' },
+  { title: 'MX', value: 'MX' },
+  { title: 'TXT', value: 'TXT' },
+  { title: 'NS', value: 'NS' },
+  { title: 'SRV', value: 'SRV' }
+]
+
+const filterStatusOptions = [
+  { title: '全部状态', value: '' },
+  { title: '启用', value: 'ENABLE' },
+  { title: '禁用', value: 'DISABLE' }
+]
+
 /**
  * 加载DNS记录列表
  */
@@ -354,36 +418,70 @@ const loadDnsRecords = async () => {
   try {
     console.log('开始加载DNS记录列表...')
     
-    // 解析域名信息，格式为 subdomain.domain
-    const domainParts = domainName.value.split('.')
-    const domain = domainParts.slice(-2).join('.') // 获取主域名部分
-    const subdomain = domainParts.slice(0, -2).join('.') // 获取子域名部分
+    // 从路由参数获取subdomainId
+    const currentSubdomainId = subdomainId.value
     
-    // 调用域名服务获取三级域名解析列表
-    const response = await domainService.getSubdomainList({
-      subdomain: subdomain,
-      domain: domain
-    })
+    if (!currentSubdomainId) {
+      showErrorMessage('缺少子域名ID参数')
+      return
+    }
     
-    if (response.code === 200 && response.data) {
-      dnsRecords.value = response.data.map((record) => ({
+    // 调用DNS服务查询接口
+    const response = await dnsService.getDnsRecordsBySubdomain(parseInt(currentSubdomainId as string))
+    
+    console.log('DNS查询响应完整结构:', JSON.stringify(response, null, 2))
+    console.log('响应类型:', typeof response)
+    console.log('响应code:', response?.code)
+    console.log('响应data:', response?.data)
+    
+    // 检查响应结构 - 兼容多种可能的响应格式
+    const responseData = response?.data?.data || response?.data || response
+    const responseCode = response?.data?.code || response?.code || (response ? 200 : 500)
+    
+    if (responseCode === 200 && responseData && Array.isArray(responseData)) {
+      dnsRecords.value = responseData.map((record: any) => ({
         id: record.id,
-        type: 'A', // 默认为A记录，实际应根据记录类型确定
-        name: record.subdomain,
-        content: record.ipAddress,
-        ttl: record.ttl,
-        proxied: false, // 默认不代理
+        userId: record.userId,
+        subdomainId: record.subdomainId,
+        recordId: record.recordId,
+        type: record.type || 'A',
+        name: record.name || '@',
+        content: record.value || record.ipAddress,
+        ttl: record.ttl || 600,
+        proxied: false, // 根据实际需要设置
+        status: record.status,
+        remark: record.remark,
+        monitorStatus: record.monitorStatus,
+        syncStatus: record.syncStatus,
+        syncError: record.syncError,
         createTime: record.createTime,
         updateTime: record.updateTime
       }))
+      
+      // 应用过滤器
+      applyFilters()
     } else {
       dnsRecords.value = []
+      filteredDnsRecords.value = []
+      console.log('查询失败，响应码:', responseCode, '数据:', responseData)
+      if (responseCode !== 200) {
+        const errorMsg = response?.data?.message || response?.message || '查询失败'
+        showErrorMessage(errorMsg)
+      } else if (!responseData || !Array.isArray(responseData)) {
+        showErrorMessage('返回的数据格式不正确')
+      }
     }
     
     console.log('DNS记录列表加载成功:', dnsRecords.value)
   } catch (error: any) {
     console.error('加载DNS记录列表失败:', error)
-    showErrorMessage(error.message || '加载失败，请稍后重试')
+    if (error.response?.status === 403) {
+      showErrorMessage('无权限访问该子域名的解析记录')
+    } else if (error.response?.status === 401) {
+      showErrorMessage('未授权访问，请重新登录')
+    } else {
+      showErrorMessage(error.message || '加载失败，请稍后重试')
+    }
   } finally {
     loading.value = false
   }
@@ -422,6 +520,73 @@ const getContentPlaceholder = (type: string) => {
 }
 
 /**
+ * 获取状态颜色
+ */
+const getStatusColor = (status: string) => {
+  const colors: Record<string, string> = {
+    'ENABLE': 'success',
+    'DISABLE': 'error',
+    'PENDING': 'warning'
+  }
+  return colors[status] || 'grey'
+}
+
+/**
+ * 获取状态文本
+ */
+const getStatusText = (status: string) => {
+  const texts: Record<string, string> = {
+    'ENABLE': '启用',
+    'DISABLE': '禁用',
+    'PENDING': '待处理'
+  }
+  return texts[status] || status
+}
+
+/**
+ * 获取同步状态颜色
+ */
+const getSyncStatusColor = (syncStatus: string) => {
+  const colors: Record<string, string> = {
+    'SUCCESS': 'success',
+    'PENDING': 'warning',
+    'FAILED': 'error'
+  }
+  return colors[syncStatus] || 'grey'
+}
+
+/**
+ * 获取同步状态文本
+ */
+const getSyncStatusText = (syncStatus: string) => {
+  const texts: Record<string, string> = {
+    'SUCCESS': '同步成功',
+    'PENDING': '同步中',
+    'FAILED': '同步失败'
+  }
+  return texts[syncStatus] || syncStatus
+}
+
+/**
+ * 应用过滤器
+ */
+const applyFilters = () => {
+  let filtered = [...dnsRecords.value]
+  
+  // 按类型过滤
+  if (filterType.value) {
+    filtered = filtered.filter(record => record.type === filterType.value)
+  }
+  
+  // 按状态过滤
+  if (filterStatus.value) {
+    filtered = filtered.filter(record => record.status === filterStatus.value)
+  }
+  
+  filteredDnsRecords.value = filtered
+}
+
+/**
  * 编辑记录
  */
 const editRecord = (record: DnsRecord) => {
@@ -431,7 +596,7 @@ const editRecord = (record: DnsRecord) => {
     name: record.name,
     content: record.content,
     ttl: record.ttl,
-    proxied: record.proxied
+    proxied: record.proxied || false
   }
   showAddDialog.value = true
 }

@@ -308,7 +308,7 @@ const handleSearch = async () => {
     // 并发查询所有域名后缀的可用性
     const promises = suffixes.map(async (suffix) => {
       try {
-        const response = await fetch(`/api/user/subdomain/check-registration`, {
+        const response = await fetch(`/api/user/subdomains/check-registration`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -374,7 +374,7 @@ const registerDomain = async (result: {domain: string}) => {
     const domain = domainParts.slice(1).join('.')
     
     // 调用注册接口
-    const response = await fetch('/api/user/subdomain/register', {
+    const response = await fetch('/api/user/subdomains/register', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,

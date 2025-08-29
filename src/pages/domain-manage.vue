@@ -323,10 +323,16 @@ const deleteDomain = async (domain: DomainRecord) => {
  * 管理域名
  */
 const manageDomain = (domain: DomainRecord) => {
-  const fullDomain = `${domain.subdomain}.${domain.domain}`
-  console.log('管理域名:', fullDomain)
-  // 触发DNS管理事件，让父组件处理页面切换
-  emit('manageDns', fullDomain)
+  console.log('管理域名:', domain)
+  
+  // 跳转到DNS管理页面，传递subdomainId参数
+  router.push({
+    path: '/dns-manage',
+    query: {
+      subdomainId: domain.id,
+      domain: `${domain.subdomain}.${domain.domain}`
+    }
+  })
 }
 
 /**
