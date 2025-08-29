@@ -47,8 +47,8 @@ export interface DnsRecordCreateParams {
   value: string
   ttl: number
   line?: string
-  mx?: number
-  weight?: number
+  mx?: number | null
+  weight?: number | null
   remark?: string
 }
 
@@ -58,8 +58,8 @@ export interface DnsRecordUpdateParams {
   value?: string
   ttl?: number
   line?: string
-  mx?: number
-  weight?: number
+  mx?: number | null
+  weight?: number | null
   status?: string
   remark?: string
 }
@@ -147,39 +147,43 @@ class DnsService {
 
   /**
    * 更新DNS记录
-   * @param recordId 记录ID
+   * @param id DNS记录的主键ID
    * @param params 更新参数
    * @returns Promise<ApiResponse<DnsRecord>>
    */
-  async updateDnsRecord(recordId: number, params: DnsRecordUpdateParams) {
-    return await http.put(`/api/user/dns-records/${recordId}`, params)
+  async updateDnsRecord(id: number, params: DnsRecordUpdateParams) {
+    // 根据接口文档，使用POST方法调用修改接口，id是DNS记录的主键ID
+    return await http.post('/api/user/dns-records/modify', {
+      id: id,
+      ...params
+    })
   }
 
   /**
    * 删除DNS记录
-   * @param recordId 记录ID
+   * @param id DNS记录ID
    * @returns Promise<ApiResponse<void>>
    */
-  async deleteDnsRecord(recordId: number) {
-    return await http.delete(`/api/user/dns-records/${recordId}`)
+  async deleteDnsRecord(id: number) {
+    return await http.delete(`/api/user/dns-records/${id}`)
   }
 
   /**
    * 启用DNS记录
-   * @param recordId 记录ID
+   * @param id DNS记录的主键ID
    * @returns Promise<ApiResponse<void>>
    */
-  async enableDnsRecord(recordId: number) {
-    return await this.updateDnsRecord(recordId, { status: 'ENABLE' })
+  async enableDnsRecord(id: number) {
+    return await this.updateDnsRecord(id, { status: 'ENABLE' })
   }
 
   /**
    * 禁用DNS记录
-   * @param recordId 记录ID
+   * @param id DNS记录的主键ID
    * @returns Promise<ApiResponse<void>>
    */
-  async disableDnsRecord(recordId: number) {
-    return await this.updateDnsRecord(recordId, { status: 'DISABLE' })
+  async disableDnsRecord(id: number) {
+    return await this.updateDnsRecord(id, { status: 'DISABLE' })
   }
 
   /**

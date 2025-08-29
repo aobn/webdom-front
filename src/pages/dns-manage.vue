@@ -127,6 +127,14 @@
               <span class="text-truncate" :title="record.content">
                 {{ record.content }}
               </span>
+              <!-- 显示MX优先级 -->
+              <div v-if="record.type === 'MX' && record.mx" class="text-caption text-medium-emphasis">
+                优先级: {{ record.mx }}
+              </div>
+              <!-- 显示权重 -->
+              <div v-if="record.weight && record.weight > 0" class="text-caption text-medium-emphasis">
+                权重: {{ record.weight }}
+              </div>
             </div>
             <div class="dns-column" style="flex: 1">
               <span class="text-medium-emphasis">{{ record.ttl }}</span>
@@ -233,13 +241,39 @@
                   required
                 ></v-select>
               </v-col>
-              <v-col cols="12" md="6" v-if="recordForm.type === 'A' || recordForm.type === 'CNAME'">
-                <v-switch
-                  v-model="recordForm.proxied"
-                  label="启用代理"
-                  color="primary"
-                  hide-details
-                ></v-switch>
+              <v-col cols="12" md="6" v-if="recordForm.type === 'MX'">
+                <v-text-field
+                  v-model="recordForm.mx"
+                  label="MX优先级"
+                  variant="outlined"
+                  type="number"
+                  :rules="[v => recordForm.type !== 'MX' || (v && v >= 1 && v <= 20) || 'MX优先级必须在1-20之间']"
+                  placeholder="1-20"
+                ></v-text-field>
+              </v-col>
+              
+              <!-- 权重字段 - 用于负载均衡 -->
+              <v-col cols="12" md="6">
+                <v-text-field
+                  v-model="recordForm.weight"
+                  label="权重 (可选)"
+                  variant="outlined"
+                  type="number"
+                  :rules="[v => !v || (v >= 0 && v <= 100) || '权重必须在0-100之间']"
+                  placeholder="0-100"
+                  hint="用于负载均衡，0表示不使用权重"
+                ></v-text-field>
+              </v-col>
+            </v-row>
+            
+            <v-row v-if="recordForm.type !== 'MX'">
+              <v-col cols="12">
+                <v-text-field
+                  v-model="recordForm.remark"
+                  label="备注"
+                  variant="outlined"
+                  placeholder="可选的备注信息"
+                ></v-text-field>
               </v-col>
             </v-row>
           </v-form>
@@ -333,7 +367,9 @@ const recordForm = ref({
   name: '',
   content: '',
   ttl: 3600,
-  proxied: false
+  mx: null as number | null,
+  weight: null as number | null,  // 添加权重字段
+  remark: ''
 })
 
 // 域名信息
@@ -357,7 +393,8 @@ interface DnsRecord {
   name: string
   content: string
   ttl: number
-  proxied?: boolean
+  mx?: number
+  weight?: number  // 添加权重字段
   status: string
   remark?: string
   monitorStatus?: string
@@ -448,7 +485,8 @@ const loadDnsRecords = async () => {
         name: record.name || '@',
         content: record.value || record.ipAddress,
         ttl: record.ttl || 600,
-        proxied: false, // 根据实际需要设置
+        mx: record.mx,
+        weight: record.weight,  // 添加权重字段映射
         status: record.status,
         remark: record.remark,
         monitorStatus: record.monitorStatus,
@@ -511,7 +549,7 @@ const getContentPlaceholder = (type: string) => {
     'A': '192.168.1.1',
     'AAAA': '2001:db8::1',
     'CNAME': 'example.com',
-    'MX': '10 mail.example.com',
+    'MX': 'mail.example.com',
     'TXT': 'v=spf1 include:_spf.example.com ~all',
     'NS': 'ns1.example.com',
     'SRV': '10 5 443 target.example.com'
@@ -596,7 +634,9 @@ const editRecord = (record: DnsRecord) => {
     name: record.name,
     content: record.content,
     ttl: record.ttl,
-    proxied: record.proxied || false
+    mx: record.mx || null,
+    weight: record.weight || null,  // 添加权重字段
+    remark: record.remark || ''
   }
   showAddDialog.value = true
 }
@@ -610,20 +650,68 @@ const saveRecord = async () => {
     if (editingRecord.value) {
       // 更新记录
       console.log('更新DNS记录:', recordForm.value)
-      // await http.put(`/api/dns/records/${editingRecord.value.id}`, recordForm.value)
+      const updateParams = {
+        type: recordForm.value.type,
+        value: recordForm.value.content,  // 使用value字段，符合接口文档
+        ttl: recordForm.value.ttl,
+        mx: recordForm.value.type === 'MX' ? recordForm.value.mx : null,
+        weight: recordForm.value.weight || null,
+        status: 'ENABLE',  // 默认启用状态
+        remark: recordForm.value.remark || '通过界面更新'
+      }
+      
+      await dnsService.updateDnsRecord(editingRecord.value.id, updateParams)
       showSuccessMessage('DNS记录更新成功')
     } else {
       // 添加记录
       console.log('添加DNS记录:', recordForm.value)
-      // await http.post(`/api/dns/records/${domainName.value}`, recordForm.value)
-      showSuccessMessage('DNS记录添加成功')
+      
+      const currentSubdomainId = subdomainId.value
+      if (!currentSubdomainId) {
+        showErrorMessage('缺少子域名ID参数')
+        return
+      }
+      
+      const createParams = {
+        subdomainId: parseInt(currentSubdomainId as string),
+        name: recordForm.value.name,
+        type: recordForm.value.type,
+        value: recordForm.value.content,
+        ttl: recordForm.value.ttl,
+        line: '默认',
+        mx: recordForm.value.type === 'MX' ? recordForm.value.mx : null,
+        remark: recordForm.value.remark || '通过界面添加'
+      }
+      
+      console.log('创建DNS记录参数:', createParams)
+      const response = await dnsService.createDnsRecord(createParams)
+      
+      if (response && response.code === 200) {
+        showSuccessMessage('DNS记录添加成功')
+      } else {
+        showErrorMessage(response?.message || 'DNS记录添加失败')
+      }
     }
     
     closeAddDialog()
     loadDnsRecords()
   } catch (error: any) {
     console.error('保存DNS记录失败:', error)
-    showErrorMessage(error.message || '保存失败，请稍后重试')
+    
+    // 处理具体的错误情况
+    if (error.response?.status === 400) {
+      showErrorMessage('请求参数错误，请检查输入内容')
+    } else if (error.response?.status === 403) {
+      showErrorMessage('无权限操作该子域名的DNS记录')
+    } else if (error.response?.status === 409) {
+      showErrorMessage('DNS记录已存在，请检查记录名称和类型')
+    } else if (error.message?.includes('子域名不存在')) {
+      showErrorMessage('子域名不存在或已被删除')
+    } else if (error.message?.includes('DNS记录已存在')) {
+      showErrorMessage('相同的DNS记录已存在')
+    } else {
+      showErrorMessage(error.message || '保存失败，请稍后重试')
+    }
   } finally {
     saving.value = false
   }
@@ -655,10 +743,11 @@ const deleteRecord = async (record: DnsRecord) => {
   
   try {
     console.log('删除DNS记录:', record)
-    // await http.delete(`/api/dns/records/${record.id}`)
+    await dnsService.deleteDnsRecord(record.id)
     
     showSuccessMessage('DNS记录删除成功')
     dnsRecords.value = dnsRecords.value.filter(r => r.id !== record.id)
+    applyFilters()
   } catch (error: any) {
     console.error('删除DNS记录失败:', error)
     showErrorMessage(error.message || '删除失败，请稍后重试')
@@ -678,7 +767,9 @@ const closeAddDialog = () => {
     name: '',
     content: '',
     ttl: 3600,
-    proxied: false
+    mx: null,
+    weight: null,  // 重置权重字段
+    remark: ''
   }
 }
 
