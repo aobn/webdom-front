@@ -427,8 +427,7 @@ const testCustomDialog = () => {
   globalDialog.showDialog({
     type: 'custom',
     title: '自定义对话框测试',
-    subtitle: '这是一个完全自定义的对话框',
-    message: '您可以自定义对话框的各种属性，包括按钮文本、颜色、图标等。这个对话框展示了自定义功能的强大之处。',
+    message: '这是一个完全自定义的对话框。您可以自定义对话框的各种属性，包括按钮文本、颜色、图标等。这个对话框展示了自定义功能的强大之处。',
     icon: 'mdi-star',
     maxWidth: 600,
     confirmButtonText: '太棒了！',
