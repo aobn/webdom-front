@@ -1,0 +1,4 @@
+# EdgeOne Pages API代理规则
+# 将 /api/* 请求代理到后端服务器 https://db.goxi.top/
+
+/api/*  https://db.goxi.top/api/:splat  200
