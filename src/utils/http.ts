@@ -28,9 +28,12 @@ class HttpClient {
   private instance: AxiosInstance
 
   constructor() {
+    // 根据环境变量设置baseURL
+    const baseURL = import.meta.env.VITE_API_BASE_URL || ''
+    
     // 创建axios实例
     this.instance = axios.create({
-      baseURL: '', // 使用相对路径，通过Vite代理转发到后端
+      baseURL, // 开发环境使用代理，生产环境直接使用完整URL
       timeout: 10000, // 请求超时时间
       headers: {
         'Content-Type': 'application/json',

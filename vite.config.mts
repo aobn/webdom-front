@@ -88,7 +88,7 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: 'https://db.goxi.top',
         changeOrigin: true,
         secure: false,
       },
