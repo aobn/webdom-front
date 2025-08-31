@@ -28,9 +28,26 @@
 2. 将 `dist` 目录上传到EdgeOne Pages
 
 3. 在EdgeOne Pages控制台中配置：
-   - 确保启用了函数功能
+   - 确保启用了函数功能 (Functions)
    - 检查重写规则是否生效
    - 验证CORS配置
+   - 如果使用Cloudflare Pages，确保启用了Edge Functions
+
+### EdgeOne Pages特殊配置
+
+如果仍然遇到405错误，请在EdgeOne Pages控制台中：
+
+1. **启用Functions功能**
+2. **添加环境变量**（如果需要）
+3. **检查域名绑定**
+4. **验证SSL证书**
+
+### Cloudflare Pages配置
+
+如果使用Cloudflare Pages：
+1. 确保启用了Functions
+2. 检查_routes.json配置
+3. 验证_middleware.js是否正确部署
 
 ### 故障排除
 

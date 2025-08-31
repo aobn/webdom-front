@@ -1,13 +1,19 @@
 {
+  "version": 2,
   "functions": {
-    "api/**": {
+    "_middleware": {
       "runtime": "edge"
     }
   },
-  "rewrites": [
+  "routes": [
     {
-      "source": "/api/(.*)",
-      "destination": "https://db.goxi.top/api/$1"
+      "src": "/api/(.*)",
+      "dest": "https://db.goxi.top/api/$1",
+      "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
     }
   ]
 }
