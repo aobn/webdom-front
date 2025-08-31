@@ -1,15 +1,9 @@
 {
-  "version": 2,
-  "functions": {
-    "_middleware": {
-      "runtime": "edge"
-    }
-  },
+  "version": 1,
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "https://db.goxi.top/api/$1",
-      "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+      "dest": "https://db.goxi.top/api/$1"
     },
     {
       "src": "/(.*)",
