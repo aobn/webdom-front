@@ -7,9 +7,11 @@
 ### 配置文件
 
 1. **public/_redirects** - EdgeOne Pages重定向规则
-2. **public/edgeone-pages.json** - EdgeOne Pages完整配置
-3. **edgeone.config.json** - EdgeOne配置文件
-4. **vite.config.ts** - 开发环境代理配置
+2. **public/_headers** - CORS头配置
+3. **public/edgeone-pages.json** - EdgeOne Pages配置
+4. **public/vercel.json** - 通用代理配置
+5. **public/api/proxy.js** - API代理函数
+6. **vite.config.mts** - 开发环境代理配置
 
 ### 代理规则
 
@@ -25,7 +27,31 @@
 
 2. 将 `dist` 目录上传到EdgeOne Pages
 
-3. EdgeOne Pages会自动识别配置文件并应用代理规则
+3. 在EdgeOne Pages控制台中配置：
+   - 确保启用了函数功能
+   - 检查重写规则是否生效
+   - 验证CORS配置
+
+### 故障排除
+
+如果API请求仍然失败，请检查：
+
+1. **EdgeOne Pages控制台**：
+   - 查看函数日志
+   - 检查重写规则配置
+   - 验证域名绑定
+
+2. **浏览器开发者工具**：
+   - 检查网络请求是否正确代理
+   - 查看CORS错误信息
+   - 验证请求头设置
+
+3. **备用方案**：
+   如果代理不工作，可以直接修改前端代码使用完整URL：
+   ```javascript
+   // 在 src/utils/http.ts 中修改 baseURL
+   baseURL: 'https://db.goxi.top'
+   ```
 
 ### 开发环境
 

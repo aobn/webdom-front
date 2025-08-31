@@ -30,7 +30,7 @@ class HttpClient {
   constructor() {
     // 创建axios实例
     this.instance = axios.create({
-      baseURL: '', // 使用相对路径，通过Vite代理转发到后端
+      baseURL: process.env.NODE_ENV === 'production' ? 'https://db.goxi.top' : '', // 生产环境直接使用后端URL
       timeout: 10000, // 请求超时时间
       headers: {
         'Content-Type': 'application/json',

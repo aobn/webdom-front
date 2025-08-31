@@ -51,8 +51,8 @@ export default defineConfig({
         families: [
           {
             name: 'Roboto',
-            weights: [100, 300, 400, 500, 700, 900],
-            styles: ['normal', 'italic'],
+            weights: [400, 500, 700], // 只加载常用字重
+            styles: ['normal'],
           },
         ],
       },
